@@ -14,19 +14,16 @@ class Classifier:
         pass
 
     def fit(self, data, target):
-        dt = DecisionTree(data, target)
-        dt.build_tree()
+        dt = DecisionTree(data, target, features=[0, 2, 4, 19])  # initialise decision tree
+        dt.build_tree()  # build tree
+        print(dt.get_prediction(data[15]))  # make prediction base on input
         dt.print_tree(dt.root)
-        for i in range(15):
-            dt.print_prediction(data[i])
         pass
 
     def predict(self, data, legal=None):
         return 1
 
 
-# if data is equal to 1 then choose right node
-# otherwise choose left
 class Node:
     def __init__(self, children=None, feature=None, value=None, prediction=None, is_leaf=False):
         if children is None:
@@ -35,15 +32,17 @@ class Node:
         self.feature = feature
         self.value = value
         self.prediction = prediction
-        self.is_leaf = is_leaf
 
 
 class DecisionTree:
-    def __init__(self, data, targets, root=None):
+    def __init__(self, data, targets, features=None, root=None):
         self.data = data
         self.targets = targets
         self.root = root
         self.total_entropy = self.get_total_entropy()
+        if features is None:
+            features = range(len(self.data[0]))
+        self.features = set(features)
 
     def get_total_entropy(self):
         examples = [0, 0, 0, 0]
@@ -88,8 +87,7 @@ class DecisionTree:
         return random.choices(sequence, weights=distribution, k=1)
 
     def build_tree(self):
-        features = set(range(len(self.data[0])))
-        self.root = self.build(features, self.data, self.targets)
+        self.root = self.build(self.features, self.data, self.targets)
 
     def build(self, features, data, targets, parent_targets=None):
         if len(targets) == 0:
@@ -103,8 +101,7 @@ class DecisionTree:
 
         current_node = Node()
 
-        best_feature = max(
-            [i for i in features], key=lambda x: self.get_information_gain(x, data, targets))
+        best_feature = max([i for i in features], key=lambda x: self.get_information_gain(x, data, targets))
 
         current_node.feature = best_feature
         features.remove(best_feature)
@@ -124,6 +121,15 @@ class DecisionTree:
 
         return current_node
 
+    def get_prediction(self, input_data):
+        node = self.root
+        while node.prediction is None:
+            for child_node in node.children:
+                if child_node.value == input_data[node.feature]:
+                    node = child_node
+                    break
+        return node.prediction
+
     def get_left_node(self, node):
         if len(node.children) > 0:
             return node.children[0]
@@ -133,15 +139,6 @@ class DecisionTree:
         if len(node.children) == 2:
             return node.children[1]
         return None
-
-    def get_prediction(self, input_data):
-        node = self.root
-        while node.prediction is None:
-            if input_data[node.feature] == 1:
-                node = self.get_left_node(node)
-            else:
-                node = self.get_right_node(node)
-        return node.prediction
 
     def print_tree(self, node, level=0):
         if node is not None:
@@ -156,10 +153,3 @@ class DecisionTree:
         print("the prediction for:")
         print(data)
         print(self.get_prediction(data))
-
-
-
-
-
-
-
