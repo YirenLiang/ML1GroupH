@@ -17,6 +17,8 @@ class Classifier:
         dt = DecisionTree(data, target)
         dt.build_tree()
         dt.print_tree(dt.root)
+        for i in range(15):
+            dt.print_prediction(data[i])
         pass
 
     def predict(self, data, legal=None):
@@ -132,6 +134,15 @@ class DecisionTree:
             return node.children[1]
         return None
 
+    def get_prediction(self, input_data):
+        node = self.root
+        while node.prediction is None:
+            if input_data[node.feature] == 1:
+                node = self.get_left_node(node)
+            else:
+                node = self.get_right_node(node)
+        return node.prediction
+
     def print_tree(self, node, level=0):
         if node is not None:
             self.print_tree(self.get_left_node(node), level + 1)
@@ -140,3 +151,15 @@ class DecisionTree:
             else:
                 print(f"{' ' * 4 * level}->{node.value}[{node.feature}]")
             self.print_tree(self.get_right_node(node), level + 1)
+
+    def print_prediction(self, data):
+        print("the prediction for:")
+        print(data)
+        print(self.get_prediction(data))
+
+
+
+
+
+
+
