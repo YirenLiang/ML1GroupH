@@ -3,6 +3,7 @@
 #
 # Use the skeleton below for the classifier and insert your code here.
 import math
+import random
 
 
 class Classifier:
@@ -13,6 +14,9 @@ class Classifier:
         pass
 
     def fit(self, data, target):
+        dt = DecisionTree(data, target)
+        dt.build_tree()
+        dt.print_tree(dt.root)
         pass
 
     def predict(self, data, legal=None):
@@ -22,27 +26,27 @@ class Classifier:
 # if data is equal to 1 then choose right node
 # otherwise choose left
 class Node:
-    def __init__(self, is_leaf=None, left=None, right=None, information_gain=None, feature=None, value=None, data=None):
-        self.is_leaf = is_leaf
-        self.left = left
-        self.right = right
-        self.information_gain = information_gain
+    def __init__(self, children=None, feature=None, value=None, prediction=None, is_leaf=False):
+        if children is None:
+            children = []
+        self.children = children
         self.feature = feature
         self.value = value
-        self.data = data
+        self.prediction = prediction
+        self.is_leaf = is_leaf
 
 
 class DecisionTree:
-    def __init__(self, data, root=None):
+    def __init__(self, data, targets, root=None):
         self.data = data
+        self.targets = targets
         self.root = root
         self.total_entropy = self.get_total_entropy()
 
     def get_total_entropy(self):
         examples = [0, 0, 0, 0]
-        for row in self.data:
-            label = row[-1]
-            examples[label] += 1
+        for target in self.targets:
+            examples[target] += 1
 
         return self.get_entropy(examples)
 
@@ -56,52 +60,83 @@ class DecisionTree:
 
         return entropy
 
-    # example_counts = {"0": [2,3,1,2], "1": [1,2,0,2]}
-    def get_information_gain(self, feature, data):
-        nodes_examples = dict()
-        for row in data:
-            value = row[feature]
-            label = row[-1]
-            examples = nodes_examples.get(nodes_examples, [0, 0, 0, 0])
-            examples[label] += 1
-            nodes_examples[value] = examples
+    def get_information_gain(self, feature, data, targets):
+        examples = dict()
+        for i in range(len(data)):
+            value = data[i][feature]
+            label = targets[i]
+            example = examples.get(value, [0, 0, 0, 0])
+            example[label] += 1
+            examples[value] = example
 
-        total_examples = sum(sum(nodes_examples.values()))
+        total_examples = sum([sum(values) for values in examples.values()])
         information_gain = self.total_entropy
-        for examples in nodes_examples.values():
+        for examples in examples.values():
             information_gain -= (sum(examples) / total_examples) * self.get_entropy(examples)
 
         return information_gain
 
-    def is_leaf(self, node):
-        labels = [row[-1] for row in node.data]
-        return labels.count(labels[0]) == len(labels)
+    def get_plurality_value(self, targets):
+        frequency = dict()
+        for target in targets:
+            frequency[target] = frequency.get(target, 0) + 1
+        sequence = list(frequency.keys())
+        distribution = [f / len(targets) for f in frequency.values()]
+
+        return random.choices(sequence, weights=distribution, k=1)
 
     def build_tree(self):
-        root = Node()
+        features = set(range(len(self.data[0])))
+        self.root = self.build(features, self.data, self.targets)
 
-    def build(self, current_node):
-        current_node.feature = max(
-            [(self.get_information_gain(i, current_node.data), i) for i in range(0, len(current_node.data[0] - 1))],
-            key=lambda x: x[1])
+    def build(self, features, data, targets, parent_targets=None):
+        if len(targets) == 0:
+            return Node(prediction=self.get_plurality_value(parent_targets)[0])
 
-        left_node_data = []
-        right_node_data = []
-        for row in current_node.data:
-            if row[current_node.feature] == 0:
-                left_node_data.append(row)
+        elif len(features) == 0:
+            return Node(prediction=self.get_plurality_value(targets)[0])
+
+        elif targets.count(targets[0]) == len(targets):
+            return Node(prediction=targets[0])
+
+        current_node = Node()
+
+        best_feature = max(
+            [i for i in features], key=lambda x: self.get_information_gain(x, data, targets))
+
+        current_node.feature = best_feature
+        features.remove(best_feature)
+
+        possible_values = [0, 1]
+        for value in possible_values:
+            remaining_data = []
+            remaining_targets = []
+            for i in range(len(data)):
+                if data[i][best_feature] == value:
+                    remaining_data.append(data[i])
+                    remaining_targets.append(targets[i])
+
+            child_node = self.build(features, remaining_data, remaining_targets, targets)
+            child_node.value = value
+            current_node.children.append(child_node)
+
+        return current_node
+
+    def get_left_node(self, node):
+        if len(node.children) > 0:
+            return node.children[0]
+        return None
+
+    def get_right_node(self, node):
+        if len(node.children) == 2:
+            return node.children[1]
+        return None
+
+    def print_tree(self, node, level=0):
+        if node is not None:
+            self.print_tree(self.get_left_node(node), level + 1)
+            if node.prediction is not None:
+                print(f"{' ' * 4 * level}->{node.value}({node.prediction})")
             else:
-                right_node_data.append(row)
-
-        left_node = Node(data=left_node_data)
-        right_node = Node(data=right_node_data)
-
-        for node in [left_node, right_node]:
-            node.is_leaf = self.is_leaf(node)
-            if node.is_leaf:
-                node.value = node.data[0][-1]
-            else:
-                self.build(node)
-
-        current_node.left = left_node
-        current_node.right = right_node
+                print(f"{' ' * 4 * level}->{node.value}[{node.feature}]")
+            self.print_tree(self.get_right_node(node), level + 1)
