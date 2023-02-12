@@ -48,9 +48,9 @@ class RandomForestClassifier:
         return [self.data, self.target]
 
     def fit(self):
-        features = random.sample(range(len(self.data[0])), 5)
-        data = self.get_bootstrap()
         for i in range(self.n_estimators):
+            features = random.sample(range(len(self.data[0])), 5)
+            data = self.get_bootstrap()
             dt = DecisionTree(data[0], data[1], features=features)
             dt.build_tree()  # build tree
             self.trees.append(dt)
