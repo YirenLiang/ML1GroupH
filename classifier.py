@@ -8,20 +8,59 @@ import random
 
 class Classifier:
     def __init__(self):
+        self.clf = RandomForestClassifier(None, None)
         pass
 
     def reset(self):
         pass
 
     def fit(self, data, target):
-        dt = DecisionTree(data, target, features=[0, 2, 4, 19])  # initialise decision tree
-        dt.build_tree()  # build tree
-        print(dt.get_prediction(data[15]))  # make prediction base on input
-        dt.print_tree(dt.root)
-        pass
+        # initialise decision tree
+        # features = random.sample(range(len(data[0])), 5)
+        # dt = DecisionTree(data, target, features=features)
+        # dt.build_tree()  # build tree
+        # print(dt.get_prediction(data[15]))  # make prediction base on input
+        # dt.print_tree(dt.root)
+        clf = RandomForestClassifier(data, target, n_estimators=200)
+        clf.fit()
+        self.clf = clf
 
     def predict(self, data, legal=None):
-        return 1
+        return self.clf.predict(data)
+
+
+class RandomForestClassifier:
+    def __init__(self, data, target, n_estimators=100, bootstrap=True):
+        self.data = data
+        self.target = target
+        self.n_estimators = n_estimators
+        self.bootstrap = bootstrap
+        self.trees = []
+
+    def get_bootstrap(self):
+        if self.bootstrap:
+            index = []
+            for i in range(len(self.data)):
+                index.append(random.randrange(0, len(self.data)))
+            data = [self.data[k] for k in index]
+            target = [self.target[k] for k in index]
+            return [data, target]
+        return [self.data, self.target]
+
+    def fit(self):
+        features = random.sample(range(len(self.data[0])), 5)
+        data = self.get_bootstrap()
+        for i in range(self.n_estimators):
+            dt = DecisionTree(data[0], data[1], features=features)
+            dt.build_tree()  # build tree
+            self.trees.append(dt)
+
+    def predict(self, features):
+        predictions = []
+        for dt in self.trees:
+            prediction = dt.get_prediction(features)
+            predictions.append(prediction)
+        return max(set(predictions), key=predictions.count)
 
 
 class Node:
@@ -73,7 +112,8 @@ class DecisionTree:
         total_examples = sum([sum(values) for values in examples.values()])
         information_gain = self.total_entropy
         for examples in examples.values():
-            information_gain -= (sum(examples) / total_examples) * self.get_entropy(examples)
+            information_gain -= (sum(examples) /
+                                 total_examples) * self.get_entropy(examples)
 
         return information_gain
 
@@ -101,7 +141,8 @@ class DecisionTree:
 
         current_node = Node()
 
-        best_feature = max([i for i in features], key=lambda x: self.get_information_gain(x, data, targets))
+        best_feature = max(
+            [i for i in features], key=lambda x: self.get_information_gain(x, data, targets))
 
         current_node.feature = best_feature
         features.remove(best_feature)
@@ -115,7 +156,8 @@ class DecisionTree:
                     remaining_data.append(data[i])
                     remaining_targets.append(targets[i])
 
-            child_node = self.build(features, remaining_data, remaining_targets, targets)
+            child_node = self.build(
+                features, remaining_data, remaining_targets, targets)
             child_node.value = value
             current_node.children.append(child_node)
 
