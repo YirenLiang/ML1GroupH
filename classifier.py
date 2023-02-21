@@ -5,30 +5,29 @@
 import math
 import random
 
+from game import Directions
+
 
 class Classifier:
     def __init__(self):
-        self.clf = RandomForestClassifier(None, None)
-        pass
+        self.classifier = None
 
     def reset(self):
         pass
 
     def fit(self, data, target):
-        # initialise decision tree
-        # features = random.sample(range(len(data[0])), 5)
-        # dt = DecisionTree(data, target, features=features)
-        # dt.build_tree()  # build tree
-        # print(dt.get_prediction(data[15]))  # make prediction base on input
-        # dt.print_tree(dt.root)
-        clf = RandomForestClassifier(data, target, n_estimators=200)
-        clf.fit()
-        self.clf = clf
+        rf_classifier = RandomForestClassifier(data, target, n_estimators=200)
+        rf_classifier.fit()
+        self.classifier = rf_classifier
 
     def predict(self, data, legal=None):
-        return self.clf.predict(data)
+        return self.classifier.predict(data, legal)
 
 
+# Random Forest Classifier
+# data is an array of arrays of integers (0 or 1) indicating state
+# target is an array of integers 0-3 indicating the action taken in each state
+# n_estimators is the number of decision trees to use in the classifier
 class RandomForestClassifier:
     def __init__(self, data, target, n_estimators=100, bootstrap=True):
         self.data = data
@@ -37,34 +36,64 @@ class RandomForestClassifier:
         self.bootstrap = bootstrap
         self.trees = []
 
+    # Sample, with replacement n training examples, where n is the number of training examples
     def get_bootstrap(self):
         if self.bootstrap:
-            index = []
+            indices = []
             for i in range(len(self.data)):
-                index.append(random.randrange(0, len(self.data)))
-            data = [self.data[k] for k in index]
-            target = [self.target[k] for k in index]
-            return [data, target]
-        return [self.data, self.target]
+                indices.append(random.randrange(0, len(self.data)))
+            data = [self.data[j] for j in indices]
+            target = [self.target[j] for j in indices]
+            return data, target
+        return self.data, self.target
 
+    # Train n decision trees with bootstrapping, and a subset of all features for each tree,
+    # where n is n_estimators
     def fit(self):
         for i in range(self.n_estimators):
-            features = random.sample(range(len(self.data[0])), 5)
-            data = self.get_bootstrap()
-            dt = DecisionTree(data[0], data[1], features=features)
-            dt.build_tree()  # build tree
+            number_of_features = len(self.data[0])
+            feature_subset_size = round(math.sqrt(number_of_features))
+            feature_subset = random.sample(range(number_of_features), feature_subset_size)
+            data, target = self.get_bootstrap()
+            dt = DecisionTree(data, target, features=feature_subset)
+            dt.build_tree()
             self.trees.append(dt)
 
-    def predict(self, features):
-        predictions = []
+    # Predict best move based on input data and return the best move that is legal
+    # Prediction is performed by choosing the common predictions by all decision trees
+    def predict(self, data, legal):
+
+        # create a dictionary containing each move and their respective occurrences
+        predictions_count = dict()
         for dt in self.trees:
-            prediction = dt.get_prediction(features)
-            predictions.append(prediction)
-        return max(set(predictions), key=predictions.count)
+            prediction = dt.get_prediction(data)
+            predictions_count[prediction] = predictions_count.get(prediction, 0) + 1
+
+        # remove the STOP move from legal
+        if Directions.STOP in legal:
+            legal.remove(Directions.STOP)
+
+        # convert legal moves to numbers
+        move_to_number = {Directions.NORTH: 0,
+                          Directions.EAST: 1,
+                          Directions.SOUTH: 2,
+                          Directions.WEST: 3}
+        legal_num = [move_to_number[m] for m in legal]
+
+        # filter predictions that are legal
+        legal_predictions = [m for m in predictions_count.items() if m[0] in legal_num]
+
+        # return the prediction with the greatest occurrence
+        return max(legal_predictions, key=lambda x: x[1])[0]
 
 
+# A node in a decision tree
+# children is a list of all child nodes
+# feature is the feature that a node represent
+# value is the value of a feature that a node represent
+# prediction is the prediction of a node, None for non-leaf nodes
 class Node:
-    def __init__(self, children=None, feature=None, value=None, prediction=None, is_leaf=False):
+    def __init__(self, children=None, feature=None, value=None, prediction=None):
         if children is None:
             children = []
         self.children = children
@@ -73,6 +102,8 @@ class Node:
         self.prediction = prediction
 
 
+# Decision tree classifier
+# root is the root node of the decision tree
 class DecisionTree:
     def __init__(self, data, targets, features=None, root=None):
         self.data = data
@@ -83,6 +114,7 @@ class DecisionTree:
             features = range(len(self.data[0]))
         self.features = set(features)
 
+    # Return the entropy of all targets (labels)
     def get_total_entropy(self):
         examples = [0, 0, 0, 0]
         for target in self.targets:
@@ -90,6 +122,7 @@ class DecisionTree:
 
         return self.get_entropy(examples)
 
+    # Return the entropy of some examples
     def get_entropy(self, examples):
         entropy = 0
         total_examples = sum(examples)
@@ -100,6 +133,7 @@ class DecisionTree:
 
         return entropy
 
+    # Return the information gain of some examples
     def get_information_gain(self, feature, data, targets):
         examples = dict()
         for i in range(len(data)):
@@ -112,11 +146,11 @@ class DecisionTree:
         total_examples = sum([sum(values) for values in examples.values()])
         information_gain = self.total_entropy
         for examples in examples.values():
-            information_gain -= (sum(examples) /
-                                 total_examples) * self.get_entropy(examples)
+            information_gain -= (sum(examples) / total_examples) * self.get_entropy(examples)
 
         return information_gain
 
+    # Return the plurality value by randomly choosing a target based on a weighted distribution
     def get_plurality_value(self, targets):
         frequency = dict()
         for target in targets:
@@ -124,31 +158,38 @@ class DecisionTree:
         sequence = list(frequency.keys())
         distribution = [f / len(targets) for f in frequency.values()]
 
-        return random.choices(sequence, weights=distribution, k=1)
+        return random.choices(sequence, weights=distribution, k=1)[0]
 
+    # Build the decision tree from root
     def build_tree(self):
         self.root = self.build(self.features, self.data, self.targets)
 
+    # Recursively build a decision tree
     def build(self, features, data, targets, parent_targets=None):
+
+        # if there are no examples left then perform plurality classification based on parent node
         if len(targets) == 0:
-            return Node(prediction=self.get_plurality_value(parent_targets)[0])
+            return Node(prediction=self.get_plurality_value(parent_targets))
 
+        # if there are no features left then preform plurality classification based on remaining examples
         elif len(features) == 0:
-            return Node(prediction=self.get_plurality_value(targets)[0])
+            return Node(prediction=self.get_plurality_value(targets))
 
+        # if all remaining examples are of the same target (label) then that target is the prediction
         elif targets.count(targets[0]) == len(targets):
             return Node(prediction=targets[0])
 
+        # otherwise choose the best feature to split the examples
         current_node = Node()
 
-        best_feature = max(
-            [i for i in features], key=lambda x: self.get_information_gain(x, data, targets))
+        best_feature = max([i for i in features], key=lambda x: self.get_information_gain(x, data, targets))
 
-        current_node.feature = best_feature
-        features.remove(best_feature)
+        current_node.feature = best_feature  # current node represents the current best feature to split
+        features.remove(best_feature)  # remove the current best feature from remaining features
 
-        possible_values = [0, 1]
+        possible_values = [0, 1]  # the possible values for each feature
         for value in possible_values:
+
             remaining_data = []
             remaining_targets = []
             for i in range(len(data)):
@@ -156,6 +197,7 @@ class DecisionTree:
                     remaining_data.append(data[i])
                     remaining_targets.append(targets[i])
 
+            # build child node with the remaining features, data and targets
             child_node = self.build(
                 features, remaining_data, remaining_targets, targets)
             child_node.value = value
@@ -163,6 +205,7 @@ class DecisionTree:
 
         return current_node
 
+    # Return a prediction for input data by traversing the decision tree until a leaf node is reached
     def get_prediction(self, input_data):
         node = self.root
         while node.prediction is None:
@@ -171,27 +214,3 @@ class DecisionTree:
                     node = child_node
                     break
         return node.prediction
-
-    def get_left_node(self, node):
-        if len(node.children) > 0:
-            return node.children[0]
-        return None
-
-    def get_right_node(self, node):
-        if len(node.children) == 2:
-            return node.children[1]
-        return None
-
-    def print_tree(self, node, level=0):
-        if node is not None:
-            self.print_tree(self.get_left_node(node), level + 1)
-            if node.prediction is not None:
-                print(f"{' ' * 4 * level}->{node.value}({node.prediction})")
-            else:
-                print(f"{' ' * 4 * level}->{node.value}[{node.feature}]")
-            self.print_tree(self.get_right_node(node), level + 1)
-
-    def print_prediction(self, data):
-        print("the prediction for:")
-        print(data)
-        print(self.get_prediction(data))
